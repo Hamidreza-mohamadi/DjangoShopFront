@@ -59,7 +59,6 @@ export function Header() {
     };
   }, []);
 
-
   const handleLogout = async () => {
     await logout();
     router.invalidate();
@@ -112,7 +111,6 @@ export function Header() {
         </form>
 
         <div className="ms-6 flex items-center gap-3 shrink-0 md:ms-10">
-
           <Link
             to="/favorites"
             className="relative inline-flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
@@ -138,7 +136,6 @@ export function Header() {
               </span>
             )}
           </Link>
-
 
           {user ? (
             <Sheet>
@@ -261,7 +258,7 @@ export function Header() {
             <Link
               key={link.to}
               to={link.to}
-              className="flex items-center gap-1.5 text-[15px] font-medium text-muted-foreground transition-colors hover:text-foreground whitespace-nowrap"
+              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[15px] font-medium text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-foreground whitespace-nowrap"
               activeProps={{ className: "text-foreground" }}
             >
               <link.icon className="h-4 w-4" />
