@@ -11,7 +11,7 @@ export function StarRating({ rating, count, size = "sm" }: StarRatingProps) {
   const value = Math.max(0, Math.min(5, rating));
 
   return (
-    <span className="flex items-center gap-1" dir="ltr">
+    <span className="flex items-center gap-1" dir="rtl">
       <span className="flex items-center">
         {[0, 1, 2, 3, 4].map((i) => {
           const fill = Math.max(0, Math.min(1, value - i));
