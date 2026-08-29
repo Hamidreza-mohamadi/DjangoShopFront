@@ -31,8 +31,6 @@ export function Header() {
   const [query, setQuery] = useState("");
   const [navHidden, setNavHidden] = useState(false);
 
-  // Hysteresis-based hide/show so the collapsing second row can't oscillate:
-  // hide only after scrolling past 140px, show again only above 60px.
   useEffect(() => {
     let frame = 0;
     let hidden = false;
@@ -155,6 +153,13 @@ export function Header() {
                     <p className="text-sm text-muted-foreground">{user.email}</p>
                   </div>
                   <Link
+                    to="/profile"
+                    className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent"
+                  >
+                    <User className="h-4 w-4" />
+                    پروفایل من
+                  </Link>
+                  <Link
                     to="/orders"
                     className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent"
                   >
@@ -205,6 +210,14 @@ export function Header() {
                 {user ? (
                   <>
                     <Link
+                      to="/profile"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent"
+                    >
+                      <User className="h-4 w-4" />
+                      پروفایل من
+                    </Link>
+                    <Link
                       to="/orders"
                       onClick={() => setMobileMenuOpen(false)}
                       className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent"
@@ -247,7 +260,6 @@ export function Header() {
         </div>
       </div>
 
-      {/* Second row: main navigation, hides on scroll */}
       <div
         className={`hidden overflow-hidden transition-all duration-300 md:block ${
           navHidden ? "max-h-0 opacity-0" : "max-h-12 opacity-100"
