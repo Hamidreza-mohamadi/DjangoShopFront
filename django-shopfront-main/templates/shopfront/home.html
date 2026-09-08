@@ -1,0 +1,30 @@
+{% extends 'shopfront/base.html' %}
+{% block title %}فروشگاه | خرید آنلاین محصولات{% endblock %}
+{% block content %}
+<div class="home-page">
+  <section class="section" style="padding-top:16px"><div class="hero" data-hero>
+    <div class="hero-track">
+      <article class="hero-slide"><img src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1920&q=80" alt="فروشگاه مد و پوشاک"><div class="hero-overlay"></div><div class="hero-content"><div class="container-shop"><div class="hero-copy"><h1>خریدی ساده، سریع و مطمئن</h1><p>جدیدترین محصولات را با بهترین قیمت کشف کنید.</p><div class="hero-buttons"><a class="btn btn-primary" href="{% url 'products' %}"><i data-lucide="shopping-bag"></i> مشاهده محصولات</a><a class="btn btn-outline" href="{% url 'articles' %}">مقاله‌ها</a></div></div></div></div></article>
+      <article class="hero-slide"><img src="https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1920&q=80" alt="محصولات الکترونیک"><div class="hero-overlay"></div><div class="hero-content"><div class="container-shop"><div class="hero-copy"><h1>دنیای الکترونیک در دستان شما</h1><p>گجت‌ها و ابزارهای دیجیتال با ضمانت اصالت.</p><div class="hero-buttons"><a class="btn btn-primary" href="{% url 'products' %}">مشاهده محصولات</a><a class="btn btn-outline" href="{% url 'articles' %}">مقاله‌ها</a></div></div></div></div></article>
+      <article class="hero-slide"><img src="https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?w=1920&q=80" alt="دکوراسیون منزل"><div class="hero-overlay"></div><div class="hero-content"><div class="container-shop"><div class="hero-copy"><h1>خانه‌ای دلنشین‌تر</h1><p>دکور و لوازم منزل با طراحی مدرن.</p><div class="hero-buttons"><a class="btn btn-primary" href="{% url 'products' %}">مشاهده محصولات</a><a class="btn btn-outline" href="{% url 'articles' %}">مقاله‌ها</a></div></div></div></div></article>
+      <article class="hero-slide"><img src="https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1920&q=80" alt="پیشنهادهای ویژه"><div class="hero-overlay"></div><div class="hero-content"><div class="container-shop"><div class="hero-copy"><h1>پیشنهادهای ویژه این هفته</h1><p>تخفیف‌های شگفت‌انگیز روی محصولات منتخب.</p><div class="hero-buttons"><a class="btn btn-primary" href="{% url 'products' %}">مشاهده محصولات</a><a class="btn btn-outline" href="{% url 'articles' %}">مقاله‌ها</a></div></div></div></div></article>
+    </div>
+    <button class="hero-control hero-prev" data-hero-prev aria-label="اسلاید قبلی"><i data-lucide="chevron-right"></i></button><button class="hero-control hero-next" data-hero-next aria-label="اسلاید بعدی"><i data-lucide="chevron-left"></i></button>
+    <div class="hero-dots"><button class="hero-dot active" aria-label="اسلاید ۱"></button><button class="hero-dot" aria-label="اسلاید ۲"></button><button class="hero-dot" aria-label="اسلاید ۳"></button><button class="hero-dot" aria-label="اسلاید ۴"></button></div>
+  </div></section>
+
+  <section class="section section-soft"><div class="container-shop"><div class="section-head"><h2>دسته‌بندی‌ها</h2><a href="{% url 'products' %}">همه محصولات <i data-lucide="arrow-left"></i></a></div><div class="category-grid">
+    {% for category in categories %}<a class="category-card" href="{% url 'products' %}?category={{ category.slug }}"><h3>{{ category.name }}</h3>{% if category.description %}<p>{{ category.description|truncatechars:100 }}</p>{% endif %}</a>{% empty %}<div class="empty">دسته‌بندی‌ای موجود نیست.</div>{% endfor %}
+  </div></div></section>
+
+  {% include 'shopfront/partials/product_row.html' with title='محصولات ویژه' products=featured_products %}
+  {% include 'shopfront/partials/product_row.html' with title='محصولات پرفروش' products=best_sellers %}
+  {% include 'shopfront/partials/product_row.html' with title='محصولات با تخفیف' products=discounted_products %}
+
+  <section class="section"><div class="container-shop"><div class="section-head"><h2>آخرین مقالات</h2><a href="{% url 'articles' %}">همه مقاله‌ها</a></div><div class="category-grid">
+    {% for article in latest_articles %}<a class="category-card" href="{% url 'article_detail' article.slug %}"><h3>{{ article.title }}</h3><p>{{ article.excerpt|default:article.content|truncatechars:110 }}</p></a>{% empty %}<div class="empty">مقاله‌ای موجود نیست.</div>{% endfor %}
+  </div></div></section>
+
+  <section class="section"><div class="container-shop"><div class="features"><div class="feature"><div class="feature-icon"><i data-lucide="truck"></i></div><h3>ارسال سریع</h3><p>ارسال به سراسر کشور در کوتاه‌ترین زمان ممکن.</p></div><div class="feature"><div class="feature-icon"><i data-lucide="shield-check"></i></div><h3>ضمانت اصالت</h3><p>تمامی محصولات با ضمانت اصالت و کیفیت ارائه می‌شوند.</p></div><div class="feature"><div class="feature-icon"><i data-lucide="headphones"></i></div><h3>پشتیبانی ۲۴ ساعته</h3><p>تیم پشتیبانی در هر ساعت از شبانه‌روز آماده کمک است.</p></div></div></div></section>
+</div>
+{% endblock %}
