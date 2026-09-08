@@ -1,0 +1,13 @@
+{% load static %}
+<footer class="site-footer">
+  <div class="container-shop footer-grid">
+    <div class="footer-brand">
+      <a href="{% url 'home' %}" class="footer-title"><span class="footer-icon"><i data-lucide="shopping-bag"></i></span>فروشگاه</a>
+      <p>تجربه خرید ساده و مدرن با بهترین محصولات.</p>
+    </div>
+    <div><h4>دسترسی سریع</h4><ul><li><a href="{% url 'home' %}">خانه</a></li><li><a href="{% url 'products' %}">محصولات</a></li><li><a href="{% url 'articles' %}">مقاله‌ها</a></li><li><a href="{% url 'cart' %}">سبد خرید</a></li></ul></div>
+    <div><h4>حساب کاربری</h4><ul><li><a href="{% url 'login' %}">ورود</a></li><li><a href="{% url 'register' %}">ثبت‌نام</a></li><li><a href="{% url 'orders' %}">سفارش‌ها</a></li></ul></div>
+    <div><h4>تماس</h4><ul><li>support@shop.example</li><li>۰۲۱-۱۲۳۴۵۶۷۸</li><li>تهران، ایران</li></ul></div>
+  </div>
+  <div class="container-shop footer-copy">© {% now 'Y' %} فروشگاه. تمامی حقوق محفوظ است.</div>
+</footer>
