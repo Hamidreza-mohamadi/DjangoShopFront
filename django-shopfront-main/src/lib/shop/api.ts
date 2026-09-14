@@ -1,397 +1,211 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getCookie, setCookie, deleteCookie } from "@tanstack/react-start/server";
+import { deleteCookie, getCookie, setCookie } from "vinxi/http";
 import type {
-  Category,
-  Product,
-  ProductFilters,
-  ProductFilterOptions,
-  User,
-  LoginCredentials,
-  RegisterCredentials,
-  Order,
   Article,
-  ArticleComment,
-  ProductComment,
-  SiteSetting,
+  Category,
+  Comment,
+  CreateCommentData,
+  LoginCredentials,
+  Order,
+  Product,
+  RegisterCredentials,
+  SiteSettings,
+  User,
 } from "./types";
-import {
-  mockCategories,
-  mockProducts,
-  mockArticles,
-  mockArticleComments,
-  mockProductComments,
-  mockSiteSetting,
-} from "./mock";
 
 const API_BASE_URL = () => process.env.DJANGO_API_BASE_URL || "http://localhost:8000/api/v1";
 const USE_MOCK = () => !process.env.DJANGO_API_BASE_URL;
 
-const AUTH_COOKIE = "django_auth_token";
+const ACCESS_COOKIE = "django_access_token";
+const REFRESH_COOKIE = "django_refresh_token";
+const ACCESS_MAX_AGE = 60 * 15;
+const REFRESH_MAX_AGE = 60 * 60 * 24 * 7;
 
-async function djangoFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getCookie(AUTH_COOKIE);
-  const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
-  const response = await fetch(`${API_BASE_URL()}${path}`, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: "Request failed" }));
-    throw new Error(error.message || `HTTP ${response.status}`);
-  }
-
-  if (response.status === 204) {
-    return {} as T;
-  }
-
-  return response.json() as Promise<T>;
+interface TokenResponse {
+  access: string;
+  refresh?: string;
 }
 
-// Products
-export const getProducts = createServerFn({ method: "GET" })
-  .validator((data: ProductFilters = {}) => data)
-  .handler(async ({ data }) => {
-    if (USE_MOCK()) {
-      let products = [...mockProducts];
-      if (data.category) {
-        products = products.filter((p) => p.category?.slug === data.category);
-      }
-      if (data.search) {
-        const q = data.search.toLowerCase();
-        products = products.filter(
-          (p) =>
-            p.name.toLowerCase().includes(q) ||
-            p.description.toLowerCase().includes(q) ||
-            (p.brand ?? "").toLowerCase().includes(q),
-        );
-      }
-      if (data.brand?.length) {
-        products = products.filter((p) => !!p.brand && data.brand!.includes(p.brand));
-      }
-      if (data.color?.length) {
-        products = products.filter((p) => (p.colors ?? []).some((c) => data.color!.includes(c)));
-      }
-      if (typeof data.min_price === "number") {
-        products = products.filter((p) => p.price >= data.min_price!);
-      }
-      if (typeof data.max_price === "number") {
-        products = products.filter((p) => p.price <= data.max_price!);
-      }
-      if (data.in_stock) {
-        products = products.filter((p) => p.stock > 0 && p.is_available);
-      }
-      const popularity = (p: Product) => p.sales_count ?? p.stock;
-      const seen = (p: Product) => p.views ?? p.id;
-      switch (data.ordering) {
-        case "price":
-          products.sort((a, b) => a.price - b.price);
-          break;
-        case "-price":
-          products.sort((a, b) => b.price - a.price);
-          break;
-        case "-sales_count":
-          products.sort((a, b) => popularity(b) - popularity(a));
-          break;
-        case "-views":
-          products.sort((a, b) => seen(b) - seen(a));
-          break;
-        case "-created_at":
-        default:
-          products.sort((a, b) => b.id - a.id);
-          break;
-      }
-      return products;
-    }
+interface AuthResponse extends Partial<TokenResponse> {
+  token?: string;
+  user?: User;
+}
 
-    const params = new URLSearchParams();
-    if (data.category) params.set("category", data.category);
-    if (data.search) params.set("search", data.search);
-    if (data.page) params.set("page", String(data.page));
-    for (const brand of data.brand ?? []) params.append("brand", brand);
-    for (const color of data.color ?? []) params.append("color", color);
-    if (typeof data.min_price === "number") params.set("min_price", String(data.min_price));
-    if (typeof data.max_price === "number") params.set("max_price", String(data.max_price));
-    if (data.in_stock) params.set("in_stock", "true");
-    if (data.ordering) params.set("ordering", data.ordering);
+function cookieOptions(maxAge: number) {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    maxAge,
+    path: "/",
+  };
+}
 
-    return djangoFetch<Product[]>(`/products/?${params.toString()}`);
+function setAuthCookies(access: string, refresh?: string) {
+  setCookie(ACCESS_COOKIE, access, cookieOptions(ACCESS_MAX_AGE));
+  if (refresh) setCookie(REFRESH_COOKIE, refresh, cookieOptions(REFRESH_MAX_AGE));
+}
+
+function clearAuthCookies() {
+  deleteCookie(ACCESS_COOKIE);
+  deleteCookie(REFRESH_COOKIE);
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refresh = getCookie(REFRESH_COOKIE);
+  if (!refresh) return null;
+
+  const response = await fetch(`${API_BASE_URL()}/auth/token/refresh/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh }),
   });
 
-// Filter options (brands / colors / max price) — resolved by the backend
-export const getProductFilterOptions = createServerFn({ method: "GET" })
-  .validator((data: { category?: string } = {}) => data)
-  .handler(async ({ data }): Promise<ProductFilterOptions> => {
-    if (USE_MOCK()) {
-      const scoped = data.category
-        ? mockProducts.filter((p) => p.category?.slug === data.category)
-        : mockProducts;
-      return {
-        brands: Array.from(new Set(scoped.map((p) => p.brand).filter(Boolean) as string[])),
-        colors: Array.from(new Set(scoped.flatMap((p) => p.colors ?? []))),
-        max_price: scoped.reduce((m, p) => Math.max(m, p.price), 0),
-      };
-    }
-    const params = new URLSearchParams();
-    if (data.category) params.set("category", data.category);
-    return djangoFetch<ProductFilterOptions>(`/products/filters/?${params.toString()}`);
-  });
+  if (!response.ok) return null;
+
+  const result = (await response.json()) as { access: string };
+  setCookie(ACCESS_COOKIE, result.access, cookieOptions(ACCESS_MAX_AGE));
+  return result.access;
+}
+
+async function djangoFetch<T>(path: string, options: RequestInit = {}, retry = true): Promise<T> {
+  const access = getCookie(ACCESS_COOKIE);
+  const headers = new Headers(options.headers);
+  headers.set("Content-Type", "application/json");
+  if (access) headers.set("Authorization", `Bearer ${access}`);
+
+  const response = await fetch(`${API_BASE_URL()}${path}`, { ...options, headers });
+
+  if (response.status === 401 && retry) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) return djangoFetch<T>(path, options, false);
+    clearAuthCookies();
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || error.message || `Request failed: ${response.status}`);
+  }
+
+  if (response.status === 204) return undefined as T;
+  return response.json();
+}
+
+export const getProducts = createServerFn({ method: "GET" }).handler(async () => {
+  if (USE_MOCK()) return [] as Product[];
+  return djangoFetch<Product[]>("/products/");
+});
 
 export const getProduct = createServerFn({ method: "GET" })
   .validator((data: { slug: string }) => data)
   .handler(async ({ data }) => {
-    if (USE_MOCK()) {
-      const product = mockProducts.find((p) => p.slug === data.slug);
-      if (!product) throw new Error("Product not found");
-      return product;
-    }
+    if (USE_MOCK()) return null;
     return djangoFetch<Product>(`/products/${data.slug}/`);
   });
 
-// Categories
 export const getCategories = createServerFn({ method: "GET" }).handler(async () => {
-  if (USE_MOCK()) return mockCategories;
+  if (USE_MOCK()) return [] as Category[];
   return djangoFetch<Category[]>("/categories/");
 });
 
-// Auth
+export const getArticles = createServerFn({ method: "GET" }).handler(async () => {
+  if (USE_MOCK()) return [] as Article[];
+  return djangoFetch<Article[]>("/articles/");
+});
+
+export const getArticle = createServerFn({ method: "GET" })
+  .validator((data: { slug: string }) => data)
+  .handler(async ({ data }) => {
+    if (USE_MOCK()) return null;
+    return djangoFetch<Article>(`/articles/${data.slug}/`);
+  });
+
+export const getSiteSettings = createServerFn({ method: "GET" }).handler(async () => {
+  if (USE_MOCK()) return {} as SiteSettings;
+  return djangoFetch<SiteSettings>("/settings/");
+});
+
 export const login = createServerFn({ method: "POST" })
   .validator((data: LoginCredentials) => data)
   .handler(async ({ data }) => {
     if (USE_MOCK()) {
-      const user: User = {
-        id: 1,
-        username: data.username,
-        email: `${data.username}@example.com`,
-        first_name: "Demo",
-        last_name: "User",
-      };
-      setCookie(AUTH_COOKIE, "mock_token_123", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        maxAge: 60 * 60 * 24 * 7,
-        path: "/",
-      });
-      return { user, token: "mock_token_123" };
+      const user: User = { id: 1, username: data.username, email: `${data.username}@example.com`, first_name: "Demo", last_name: "User" };
+      setAuthCookies("mock_access_token", "mock_refresh_token");
+      return { user, access: "mock_access_token", refresh: "mock_refresh_token" };
     }
 
-    const result = await djangoFetch<{ token: string; user: User }>("/auth/login/", {
+    const response = await fetch(`${API_BASE_URL()}/auth/token/`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
+    if (!response.ok) throw new Error("نام کاربری یا رمز عبور نادرست است.");
 
-    setCookie(AUTH_COOKIE, result.token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 60 * 24 * 7,
-      path: "/",
-    });
-
-    return result;
+    const tokens = (await response.json()) as TokenResponse;
+    setAuthCookies(tokens.access, tokens.refresh);
+    const user = await djangoFetch<User>("/auth/me/");
+    return { ...tokens, user };
   });
 
 export const register = createServerFn({ method: "POST" })
   .validator((data: RegisterCredentials) => data)
   .handler(async ({ data }) => {
     if (USE_MOCK()) {
-      const user: User = {
-        id: 1,
-        username: data.username,
-        email: data.email,
-        first_name: data.first_name || "",
-        last_name: data.last_name || "",
-      };
-      setCookie(AUTH_COOKIE, "mock_token_123", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        maxAge: 60 * 60 * 24 * 7,
-        path: "/",
-      });
-      return { user, token: "mock_token_123" };
+      const user: User = { id: 1, username: data.username, email: data.email, first_name: data.first_name, last_name: data.last_name };
+      setAuthCookies("mock_access_token", "mock_refresh_token");
+      return { user, access: "mock_access_token", refresh: "mock_refresh_token" };
     }
 
-    const result = await djangoFetch<{ token: string; user: User }>("/auth/register/", {
+    const result = await djangoFetch<AuthResponse>("/auth/register/", {
       method: "POST",
       body: JSON.stringify(data),
-    });
-
-    setCookie(AUTH_COOKIE, result.token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 60 * 24 * 7,
-      path: "/",
-    });
-
-    return result;
+    }, false);
+    const access = result.access ?? result.token;
+    if (!access) throw new Error("ثبت‌نام توکن احراز هویت برنگرداند.");
+    setAuthCookies(access, result.refresh);
+    const user = result.user ?? (await djangoFetch<User>("/auth/me/"));
+    return { ...result, access, user };
   });
 
 export const getCurrentUser = createServerFn({ method: "GET" }).handler(async () => {
-  const token = getCookie(AUTH_COOKIE);
-  if (!token) return null;
-
   if (USE_MOCK()) {
-    return {
-      id: 1,
-      username: "demo",
-      email: "demo@example.com",
-      first_name: "Demo",
-      last_name: "User",
-    } as User;
+    return getCookie(ACCESS_COOKIE) ? ({ id: 1, username: "demo", email: "demo@example.com", first_name: "Demo", last_name: "User" } as User) : null;
   }
-
+  if (!getCookie(ACCESS_COOKIE) && !getCookie(REFRESH_COOKIE)) return null;
   try {
     return await djangoFetch<User>("/auth/me/");
   } catch {
-    deleteCookie(AUTH_COOKIE);
+    clearAuthCookies();
     return null;
   }
 });
 
 export const logout = createServerFn({ method: "POST" }).handler(async () => {
-  deleteCookie(AUTH_COOKIE);
+  clearAuthCookies();
   return { success: true };
 });
 
-// Orders
 export const getOrders = createServerFn({ method: "GET" }).handler(async () => {
-  const token = getCookie(AUTH_COOKIE);
-  if (!token) throw new Error("Unauthorized");
-
-  if (USE_MOCK()) {
-    return [
-      {
-        id: 1001,
-        status: "delivered",
-        total: 1290000,
-        created_at: "2024-12-15T10:30:00Z",
-        items: [],
-      },
-    ] as Order[];
-  }
-
+  if (USE_MOCK()) return [] as Order[];
   return djangoFetch<Order[]>("/orders/");
 });
 
 export const createOrder = createServerFn({ method: "POST" })
-  .validator((data: { items: { product_id: number; quantity: number }[]; shipping_address: string }) => data)
+  .validator((data: Omit<Order, "id" | "created_at">) => data)
   .handler(async ({ data }) => {
-    const token = getCookie(AUTH_COOKIE);
-    if (!token) throw new Error("Unauthorized");
-
-    if (USE_MOCK()) {
-      return {
-        id: 1002,
-        status: "pending",
-        total: 0,
-        created_at: new Date().toISOString(),
-        items: [],
-      } as Order;
-    }
-
-    return djangoFetch<Order>("/orders/", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
+    if (USE_MOCK()) return { ...data, id: Date.now(), created_at: new Date().toISOString() } as Order;
+    return djangoFetch<Order>("/orders/", { method: "POST", body: JSON.stringify(data) });
   });
 
-// Articles
-export const getArticles = createServerFn({ method: "GET" })
-  .validator((data: { category?: string; search?: string } = {}) => data)
-  .handler(async ({ data }) => {
-    if (USE_MOCK()) {
-      let articles = mockArticles.filter((a) => a.is_published);
-      if (data.search) {
-        const q = data.search.toLowerCase();
-        articles = articles.filter(
-          (a) => a.title.toLowerCase().includes(q) || a.short_description.toLowerCase().includes(q),
-        );
-      }
-      return articles;
-    }
-    const params = new URLSearchParams();
-    if (data.category) params.set("category", data.category);
-    if (data.search) params.set("search", data.search);
-    return djangoFetch<Article[]>(`/articles/?${params.toString()}`);
-  });
-
-export const getArticle = createServerFn({ method: "GET" })
-  .validator((data: { slug: string }) => data)
-  .handler(async ({ data }) => {
-    if (USE_MOCK()) {
-      const article = mockArticles.find((a) => a.slug === data.slug);
-      if (!article) throw new Error("Article not found");
-      return article;
-    }
-    return djangoFetch<Article>(`/articles/${data.slug}/`);
-  });
-
-export const getArticleComments = createServerFn({ method: "GET" })
-  .validator((data: { articleId: number }) => data)
-  .handler(async ({ data }) => {
-    if (USE_MOCK()) {
-      return mockArticleComments.filter((c) => c.article === data.articleId && c.is_approved);
-    }
-    return djangoFetch<ArticleComment[]>(`/articles/${data.articleId}/comments/`);
-  });
-
-export const createArticleComment = createServerFn({ method: "POST" })
-  .validator((data: { article: number; text: string; parent?: number | null }) => data)
-  .handler(async ({ data }) => {
-    if (USE_MOCK()) {
-      return {
-        id: Date.now(),
-        article: data.article,
-        user: "شما",
-        text: data.text,
-        create_date: new Date().toISOString(),
-        is_approved: true,
-        parent: data.parent ?? null,
-      } as ArticleComment;
-    }
-    return djangoFetch<ArticleComment>(`/articles/${data.article}/comments/`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  });
-
-// Product comments
-export const getProductComments = createServerFn({ method: "GET" })
+export const getComments = createServerFn({ method: "GET" })
   .validator((data: { productId: number }) => data)
   .handler(async ({ data }) => {
-    if (USE_MOCK()) {
-      return mockProductComments.filter((c) => c.product === data.productId && c.is_approved);
-    }
-    return djangoFetch<ProductComment[]>(`/products/${data.productId}/comments/`);
+    if (USE_MOCK()) return [] as Comment[];
+    return djangoFetch<Comment[]>(`/products/${data.productId}/comments/`);
   });
 
-export const createProductComment = createServerFn({ method: "POST" })
-  .validator((data: { product: number; text: string; rate: number; parent?: number | null }) => data)
+export const createComment = createServerFn({ method: "POST" })
+  .validator((data: CreateCommentData) => data)
   .handler(async ({ data }) => {
-    if (USE_MOCK()) {
-      return {
-        id: Date.now(),
-        product: data.product,
-        user: "شما",
-        text: data.text,
-        create_date: new Date().toISOString(),
-        is_approved: true,
-        parent: data.parent ?? null,
-        rate: data.rate,
-      } as ProductComment;
-    }
-    return djangoFetch<ProductComment>(`/products/${data.product}/comments/`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
+    if (USE_MOCK()) return { ...data, id: Date.now(), user: "شما", created_at: new Date().toISOString() } as Comment;
+    return djangoFetch<Comment>(`/products/${data.productId}/comments/`, { method: "POST", body: JSON.stringify(data) });
   });
-
-// Site settings
-export const getSiteSetting = createServerFn({ method: "GET" }).handler(async () => {
-  if (USE_MOCK()) return mockSiteSetting;
-  return djangoFetch<SiteSetting>("/site-settings/main/");
-});
